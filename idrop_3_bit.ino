@@ -1,33 +1,36 @@
-void idrop_loop() {
-  idrop_send();
-  idrop_recv();
-}
-
-void idrop_send() {
-  idrop_emit(true);
-  boolean mark = idrop_connected?idrop_next_bit():true;
-  delayMicroseconds(mark?1000:500);
-  idrop_emit(false);
-}
-
-void idrop_recv() {
-  if (idrop_connected) {
-    idrop_recv_connected();
-  } else {
-    idrop_recv_idle();
-  }
-}
-
-void idrop_recv_idle() {
-  // Look for light 4ms
-  boolean wasLight = false;
-  for (byte i = 0; i < 40; i++) {
-    boolean nowLit = idrop_detect();
-    if (wasLight && nowLit) {
-      idrop_connected = true;
-      return;
+void idrop_recv_bit(boolean mark) {
+  static byte state = 0;
+  static char rchar;
+  static byte ri;
+  if (state == 0) { // Skip the first bit
+    state = 1;
+  } else if (state == 1) { // Idle
+    if (!mark) {
+      state = 2; // A space was received, the byte begins
+      rchar = 0x00;
+      ri=0;
     }
-    wasLight = nowLit;
+  } else if (state == 2) {
+    if (mark) {
+      rchar |= (1 << ri);
+    }
+    if (ri == 8) {
+      state = 3;
+    }
+    ri++;
+  } else if (state == 3) {
+    if (mark) {
+      idrop_recv_byte(rchar);
+      state=1;
+    } else {
+      Serial.print("Recv error, out of sync!");
+      state = 0;
+    }
+  } else {
+    Serial.println("FATAL: unknown error!");
+  }
+  if (!idrop_connected) {
+    state = 0;
   }
 }
 
